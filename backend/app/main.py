@@ -26,6 +26,19 @@ for module in ROUTERS:
     app.include_router(module.router)
 
 
+def _bootstrap_seed_runs() -> None:
+    """应用启动时播种聚合运行事件流水，让时间线与查询口开箱即有真实示例数据。
+
+    放在入口而不是 store 导入期执行，避免 ledger <-> store 的循环导入。
+    """
+    from app.lifecycle.seed_runs import seed_agg_run_history
+
+    seed_agg_run_history()
+
+
+_bootstrap_seed_runs()
+
+
 @app.get("/api/health")
 def health() -> dict[str, object]:
     """健康检查：确认服务已经监听、示例数据已经就绪。"""

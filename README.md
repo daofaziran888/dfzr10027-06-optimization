@@ -75,5 +75,34 @@ npm run dev
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
 
+## 聚合任务运行生命周期（事件流水）
+
+聚合任务不再按列表位置推算时间，也不允许把计算失败直接标成完成。状态数据由
+`backend/app/lifecycle/` 的只追加事件流水驱动：
+
+- `ledger.py`：事件流水（`_agg_run_events`）。每次计算有唯一 `run_id`，
+  `RUN_STARTED / METRIC_WRITTEN / WRITES_COMPLETED / RUN_FINISHED / RUN_FAILED /
+  CONFIRM_TIMEOUT` 全部带真实时间戳与 `run_id`，运行状态由事件回放重建，非法流转直接拒绝。
+- `catalog.py`：已确认指标快照目录（`_agg_metric_snapshots`）与暂存区
+  （`_agg_snapshot_staging`）。发布门禁要求写齐全部指标且有真实完成回执；
+  缺写入 / 部分指标的数据只留在暂存区（`rejected`），查询口读不到。
+- `service.py`：生命周期命令（启动、写入、写完、确认、超时、失败、恢复）。
+  从失败 / 超时状态恢复会新开一次运行，并通过 `recovered_from` 关联上一次运行。
+
+时间线与查询口径：
+
+- `GET /api/agg_task` 时间线的开始/结束时间与日志全部来自流水；未运行任务返回空时间。
+- `GET /api/agg_task/{id}/runs`、`GET /api/agg_task/runs/{run_id}/events`
+  可按任务或运行编号定位每次计算的开始/写入/结束记录。
+- `GET /api/api_service/metrics/query?task_id=&metric=` 只返回已确认快照，
+  带版本号、`run_id` 与开始/写入/结束事件编号，并在每次查询时回流水核对证据；
+  结果完整但回执迟到时，查询口保持上一版本，同时通过 `pending_candidate`
+  说明等待确认的候选版本。
+- `GET /api/api_service/metrics/task/{task_id}` 返回任务下全部已确认指标及逐条核对结果。
+
+场景模拟与验收：`backend/simulate_lifecycle.py`（旧值 40 / 新值 52，
+覆盖回执超时与写入中途失败两个场景），后端测试见
+`backend/tests/test_agg_lifecycle.py`。
+
 领域：数据工程
 子方向：数据分析与数据应用

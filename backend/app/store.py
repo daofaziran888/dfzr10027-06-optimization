@@ -17,7 +17,8 @@ class Store:
         self._tables.setdefault("_pipeline_results", [])
 
     def module_names(self) -> list[str]:
-        return sorted(self._tables)
+        # 下划线前缀为内部表（事件流水、快照等），不计入业务模块。
+        return sorted(name for name in self._tables if not name.startswith("_"))
 
     def rows(self, module: str) -> list[dict[str, Any]]:
         return self._tables.setdefault(module, [])
@@ -51,6 +52,10 @@ store = Store()
 
 
 def reset_store() -> None:
-    """重新初始化全局 store，用于测试隔离。"""
-    global store
-    store = Store()
+    """重置全局 store 的数据表，用于测试隔离。
+
+    各业务模块通过 ``from app.store import store`` 持有的是同一个单例对象，
+    因此这里原地替换内部表，而不是重新绑定对象，避免服务侧仍读到旧数据。
+    测试不重播种子运行历史，由用例自行构造生命周期。
+    """
+    store._tables = Store()._tables

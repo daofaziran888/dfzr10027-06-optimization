@@ -90,3 +90,26 @@ def run_action(entry_id: int, payload: ActionPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
+
+
+# ---------------------------------------------------------------------------
+# 指标快照查询：只发布已确认数据，每次查询沿事件流水核对版本证据
+# ---------------------------------------------------------------------------
+
+@router.get("/metrics/query")
+def query_metric(
+    task_id: int = Query(..., description="聚合任务 id"),
+    metric: str = Query(..., description="指标名，如 gmv"),
+) -> dict[str, object]:
+    """查询单个已确认指标快照，返回版本号、运行编号与开始/写入/结束流水证据。
+
+    未通过发布门禁的数据（部分写入、缺完成回执）不会返回指标值，
+    只通过 pending_candidate 说明等待确认的候选版本。
+    """
+    return service.query_metric(task_id, metric)
+
+
+@router.get("/metrics/task/{task_id}")
+def query_task_snapshots(task_id: int) -> dict[str, object]:
+    """查询任务下全部已确认指标快照，逐条附带流水核对结果。"""
+    return service.query_task_snapshots(task_id)
